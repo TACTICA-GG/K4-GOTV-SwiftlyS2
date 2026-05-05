@@ -49,7 +49,16 @@ public sealed partial class Plugin
 			}
 		}
 
-		public async Task StoreDemoRecordAsync(string fileName, string? megaLink, string? ftpLink, List<(string Name, ulong SteamId)> requesters, TimeSpan duration, int round, int playerCount)
+		public async Task StoreDemoRecordAsync(
+			string fileName,
+			string? megaLink,
+			string? ftpLink,
+			List<(string Name, ulong SteamId)> requesters,
+			TimeSpan duration,
+			int round,
+			int playerCount,
+			string mapName,
+			string serverName)
 		{
 			if (!IsEnabled) return;
 
@@ -72,7 +81,7 @@ public sealed partial class Plugin
 
 				await conn.ExecuteAsync(sql, new
 				{
-					Map = Core.Engine.GlobalVars.MapName,
+					Map = mapName,
 					Date = DateTime.Now.ToString("yyyy-MM-dd"),
 					Time = DateTime.Now.ToString("HH:mm:ss"),
 					Length = duration.ToString(@"mm\:ss"),
@@ -83,7 +92,7 @@ public sealed partial class Plugin
 					RequesterSteamId = string.Join(", ", requesters.Select(r => r.SteamId)),
 					RequesterCount = requesters.Count,
 					PlayerCount = playerCount,
-					ServerName = Core.ConVar.Find<string>("hostname")?.Value ?? "Unknown",
+					ServerName = serverName,
 					FileName = fileName
 				});
 			}
