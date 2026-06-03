@@ -83,7 +83,6 @@ public sealed partial class Plugin
 						Core.Logger.LogInformation("FTP upload finished: {Link}", ftpLink);
 
 						if (Config.CurrentValue.Ftp.RetentionEnabled)
-							// FIX: Aszinkron hívásra módosítva a szálbiztonság érdekében
 							await AddRetentionRecordAsync("ftp", remotePath);
 					}
 					else
@@ -120,7 +119,6 @@ public sealed partial class Plugin
 						Core.Logger.LogInformation("Mega upload finished: {Link}", megaLink);
 
 						if (Config.CurrentValue.Mega.RetentionEnabled)
-							// FIX: Aszinkron hívásra módosítva a szálbiztonság érdekében
 							await AddRetentionRecordAsync("mega", nodeId);
 					}
 					else
@@ -134,6 +132,7 @@ public sealed partial class Plugin
 				Core.Logger.LogInformation("Mega upload disabled.");
 			}
 
+			// Discord webhook kiküldése a linkekkel
 			await SendToDiscordAsync(
 				fileName,
 				zipPath,
@@ -163,8 +162,30 @@ public sealed partial class Plugin
 				);
 			}
 
-			// Hibakeresés alatt nem töröljük sem a .dem, sem a .zip fájlt.
-			// Így SFTP-n is látod, hogy létrejött-e a zip és mit próbált feltölteni.
+			// --- FIX: BIZTONSÁGOS ÉS ELLENŐRZÖTT TÖRLÉSI CIKLUS A FOLYAMAT VEGÉN ---
+			
+			// Nyers .dem fájl törlése, ha a konfig engedi és a feltöltés sikeres volt (van legalább egy élő linkünk)
+			if (Config.CurrentValue.General.DeleteDemoAfterUpload && (!string.IsNullOrWhiteSpace(megaLink) || !string.IsNullOrWhiteSpace(ftpLink)))
+			{
+				if (File.Exists(demoPath))
+				{
+					File.Delete(demoPath);
+					if (Config.CurrentValue.General.LogDeletions)
+						Core.Logger.LogInformation("Successfully deleted raw demo file after upload: {Path}", demoPath);
+				}
+			}
+
+			// Tömörített .zip fájl törlése, ha a konfig engedi és a feltöltés sikeres volt
+			if (Config.CurrentValue.General.DeleteZippedDemoAfterUpload && (!string.IsNullOrWhiteSpace(megaLink) || !string.IsNullOrWhiteSpace(ftpLink)))
+			{
+				if (File.Exists(zipPath))
+				{
+					File.Delete(zipPath);
+					if (Config.CurrentValue.General.LogDeletions)
+						Core.Logger.LogInformation("Successfully deleted zipped demo file after upload: {Path}", zipPath);
+				}
+			}
+
 			Core.Logger.LogInformation("Demo processing finished: {FileName}", fileName);
 		}
 		catch (Exception ex)
@@ -389,8 +410,6 @@ public sealed partial class Plugin
 			.Replace("{length}", duration.ToString(@"mm\:ss"))
 			.Replace("{round}", round.ToString())
 			.Replace("{download_links}", downloadLinks.Count > 0 ? string.Join("\\n", downloadLinks) : "No external uploads")
-
-			// Link placeholderek payload.json-hoz
 			.Replace("{mega_link}", safeMegaLink)
 			.Replace("{megaLink}", safeMegaLink)
 			.Replace("{MEGA_LINK}", safeMegaLink)
@@ -400,7 +419,6 @@ public sealed partial class Plugin
 			.Replace("{sftp_link}", safeFtpLink)
 			.Replace("{sftpLink}", safeFtpLink)
 			.Replace("{SFTP_LINK}", safeFtpLink)
-
 			.Replace("{requester_name}", string.Join(", ", requesters.Select(r => r.Name)))
 			.Replace("{requester_steamid}", string.Join(", ", requesters.Select(r => r.SteamId)))
 			.Replace("{requester_both}", string.Join("\\n", requesters.Select(r => $"{r.Name} ({r.SteamId})")))
