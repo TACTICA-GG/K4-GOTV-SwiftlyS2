@@ -83,7 +83,8 @@ public sealed partial class Plugin
 						Core.Logger.LogInformation("FTP upload finished: {Link}", ftpLink);
 
 						if (Config.CurrentValue.Ftp.RetentionEnabled)
-							AddRetentionRecord("ftp", remotePath);
+							// FIX: Aszinkron hívásra módosítva a szálbiztonság érdekében
+							await AddRetentionRecordAsync("ftp", remotePath);
 					}
 					else
 					{
@@ -119,7 +120,8 @@ public sealed partial class Plugin
 						Core.Logger.LogInformation("Mega upload finished: {Link}", megaLink);
 
 						if (Config.CurrentValue.Mega.RetentionEnabled)
-							AddRetentionRecord("mega", nodeId);
+							// FIX: Aszinkron hívásra módosítva a szálbiztonság érdekében
+							await AddRetentionRecordAsync("mega", nodeId);
 					}
 					else
 					{
