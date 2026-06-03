@@ -9,9 +9,9 @@ namespace K4GOTV;
 
 [PluginMetadata(
 	Id = "k4.gotv",
-	Version = "1.0.3",
+	Version = "1.0.4fix",
 	Name = "K4 - GOTV",
-	Author = "K4ryuu",
+	Author = "K4ryuu+AI",
 	Description = "Advanced GOTV handler with Discord, database, FTP, SFTP and Mega integration.")]
 public sealed partial class Plugin(ISwiftlyCore core) : BasePlugin(core)
 {
@@ -68,7 +68,9 @@ public sealed partial class Plugin(ISwiftlyCore core) : BasePlugin(core)
 
 	public override void Unload()
 	{
-		StopRecording();
+		// FIX: A plugin leállásakor/hot-reloadjakor is biztonságos módban állítjuk le a rögzítést,
+		// mivel ilyenkor az engine állapota már nem garantált.
+		StopRecording(isMapUnload: true);
 
 		_cleanupTimerCts?.Cancel();
 		_ftpRetentionTimerCts?.Cancel();
