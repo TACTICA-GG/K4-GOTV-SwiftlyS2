@@ -33,7 +33,8 @@ public sealed partial class Plugin
 
 	private void OnMapUnload(IOnMapUnloadEvent @event)
 	{
-		StopRecording();
+		// Jelezzük a leállító metódusnak, hogy ez egy térképürítés, így nem szabad a GameRules-hoz nyúlni
+		StopRecording(isMapUnload: true);
 	}
 
 	private HookResult OnMatchEnd(EventCsWinPanelMatch @event)
