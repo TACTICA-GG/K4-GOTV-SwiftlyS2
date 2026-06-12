@@ -49,10 +49,22 @@ public sealed partial class Plugin(ISwiftlyCore core) : BasePlugin(core)
 		var provider = services.BuildServiceProvider();
 		Config = provider.GetRequiredService<IOptionsMonitor<PluginConfig>>();
 
+		InitializeLogging();
+		Config.OnChange(_ => LogConfigSnapshot("reload"));
+
 		Directory.CreateDirectory(DemoDirectory);
+
+		WriteLog(LogLevel.Information, "Plugin", "Plugin loaded",
+			("hotReload", hotReload),
+			("demoDirectory", DemoDirectory),
+			("pluginDataDirectory", Core.PluginDataDirectory),
+			("pluginPath", Core.PluginPath));
+
+		LogConfigSnapshot("load");
 
 		if (!hotReload && Config.CurrentValue.General.DeleteEveryDemoFromServerAfterServerStart)
 		{
+			WriteLog(LogLevel.Information, "Plugin", "Scheduling server-start demo cleanup");
 			Task.Run(DeleteEveryLocalDemoFileAfterServerStartAsync);
 		}
 
@@ -61,38 +73,70 @@ public sealed partial class Plugin(ISwiftlyCore core) : BasePlugin(core)
 		RegisterCommands();
 		StartTimers();
 
-		if (hotReload && Config.CurrentValue.AutoRecord.Enabled && GetRealPlayerCount() > 0)
+		if (hotReload && Config.CurrentValue.AutoRecord.Enabled && GetRealPlayerCount() > 0 && CanAutoStartRecording())
+		{
+			WriteLog(LogLevel.Information, "Plugin", "Hot reload auto-start recording requested",
+				("playerCount", GetRealPlayerCount()));
 			StartRecording("autodemo");
+		}
+		else if (hotReload)
+		{
+			WriteLog(LogLevel.Information, "Plugin", "Hot reload auto-start recording skipped",
+				("autoRecordEnabled", Config.CurrentValue.AutoRecord.Enabled),
+				("playerCount", GetRealPlayerCount()),
+				("canAutoStartRecording", CanAutoStartRecording()));
+		}
 	}
 
 	public override void Unload()
 	{
-		StopRecording(isMapUnload: true);
+		WriteLog(LogLevel.Information, "Plugin", "Plugin unloading");
+		StopRecording(isMapUnload: true, reason: "plugin_unload");
 
 		_cleanupTimerCts?.Cancel();
 		_ftpRetentionTimerCts?.Cancel();
 		_megaRetentionTimerCts?.Cancel();
+
+		ShutdownLogging();
 	}
 
 	private void InitializeDatabase()
 	{
 		if (!string.IsNullOrEmpty(Config.CurrentValue.DatabaseConnection))
 		{
+			WriteLog(LogLevel.Information, "Database", "Initializing database connection");
 			_database = new DatabaseService(Core, Config.CurrentValue.DatabaseConnection);
 			Task.Run(_database.InitializeAsync);
+		}
+		else
+		{
+			WriteLog(LogLevel.Information, "Database", "Database connection not configured, skipping");
 		}
 	}
 
 	private void StartTimers()
 	{
 		if (Config.CurrentValue.General.AutoCleanupEnabled)
+		{
+			WriteLog(LogLevel.Information, "Timers", "Starting auto-cleanup timer",
+				("intervalMinutes", Config.CurrentValue.General.AutoCleanupIntervalMinutes),
+				("fileAgeHours", Config.CurrentValue.General.AutoCleanupFileAgeHours));
 			_cleanupTimerCts = Core.Scheduler.RepeatBySeconds(Config.CurrentValue.General.AutoCleanupIntervalMinutes * 60f, () => Task.Run(CleanupOldFiles));
+		}
 
 		if (Config.CurrentValue.Ftp.RetentionEnabled)
+		{
+			WriteLog(LogLevel.Information, "Timers", "Starting FTP retention timer",
+				("retentionHours", Config.CurrentValue.Ftp.RetentionHours));
 			_ftpRetentionTimerCts = Core.Scheduler.RepeatBySeconds(3600f, () => Task.Run(CleanFtpRetentionAsync));
+		}
 
 		if (Config.CurrentValue.Mega.RetentionEnabled)
+		{
+			WriteLog(LogLevel.Information, "Timers", "Starting Mega retention timer",
+				("retentionHours", Config.CurrentValue.Mega.RetentionHours));
 			_megaRetentionTimerCts = Core.Scheduler.RepeatBySeconds(3600f, () => Task.Run(CleanMegaRetentionAsync));
+		}
 	}
 
 	private int GetRealPlayerCount() =>

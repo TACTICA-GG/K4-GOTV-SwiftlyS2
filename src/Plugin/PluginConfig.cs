@@ -40,6 +40,10 @@ public sealed class GeneralSettings
 	public bool AutoCleanupEnabled { get; set; } = false;
 	public int AutoCleanupIntervalMinutes { get; set; } = 60;
 	public int AutoCleanupFileAgeHours { get; set; } = 48;
+	public bool EnableFileLogging { get; set; } = true;
+	public string LogDirectory { get; set; } = "logs";
+	public string LogFileName { get; set; } = "k4-gotv.log";
+	public bool LogVerboseEvents { get; set; } = true;
 }
 
 public sealed class DiscordSettings
