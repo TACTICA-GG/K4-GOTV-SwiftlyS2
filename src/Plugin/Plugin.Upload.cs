@@ -167,25 +167,58 @@ public sealed partial class Plugin
 
 	private async Task<bool> ZipFileAsync(string sourcePath, string zipPath)
 	{
+		const int maxAttempts = 10;
+		const int retryDelayMs = 2000;
+
+		for (var attempt = 1; attempt <= maxAttempts; attempt++)
+		{
+			var result = await TryZipFileOnceAsync(sourcePath, zipPath, attempt);
+			if (result)
+				return true;
+
+			if (attempt < maxAttempts)
+			{
+				WriteLog(LogLevel.Warning, "Upload", "Zip attempt failed, retrying",
+					("sourcePath", sourcePath),
+					("zipPath", zipPath),
+					("attempt", attempt),
+					("maxAttempts", maxAttempts),
+					("retryDelayMs", retryDelayMs));
+				await Task.Delay(retryDelayMs);
+			}
+		}
+
+		WriteLog(LogLevel.Error, "Upload", "Zip failed after all retry attempts",
+			("sourcePath", sourcePath),
+			("zipPath", zipPath),
+			("maxAttempts", maxAttempts));
+
+		return false;
+	}
+
+	private async Task<bool> TryZipFileOnceAsync(string sourcePath, string zipPath, int attempt)
+	{
 		try
 		{
 			if (!File.Exists(sourcePath))
 			{
-				Core.Logger.LogError("Zip failed, source file does not exist: {Path}", sourcePath);
+				WriteLog(LogLevel.Error, "Upload", "Zip failed, source file does not exist",
+					("path", sourcePath),
+					("attempt", attempt));
 				return false;
 			}
 
 			var sourceInfo = new FileInfo(sourcePath);
 			if (sourceInfo.Length <= 0)
 			{
-				Core.Logger.LogError("Zip failed, source file is empty: {Path}", sourcePath);
+				WriteLog(LogLevel.Error, "Upload", "Zip failed, source file is empty",
+					("path", sourcePath),
+					("attempt", attempt));
 				return false;
 			}
 
 			if (File.Exists(zipPath))
-			{
 				File.Delete(zipPath);
-			}
 
 			await Task.Run(() =>
 			{
@@ -199,22 +232,44 @@ public sealed partial class Plugin
 
 			if (!File.Exists(zipPath))
 			{
-				Core.Logger.LogError("Zip failed, zip file does not exist after creation: {Path}", zipPath);
+				WriteLog(LogLevel.Error, "Upload", "Zip failed, zip file does not exist after creation",
+					("path", zipPath),
+					("attempt", attempt));
 				return false;
 			}
 
 			var zipInfo = new FileInfo(zipPath);
 			if (zipInfo.Length <= 0)
 			{
-				Core.Logger.LogError("Zip failed, created zip is empty: {Path}", zipPath);
+				WriteLog(LogLevel.Error, "Upload", "Zip failed, created zip is empty",
+					("path", zipPath),
+					("attempt", attempt));
 				return false;
 			}
 
+			WriteLog(LogLevel.Information, "Upload", "Zip created successfully",
+				("sourcePath", sourcePath),
+				("zipPath", zipPath),
+				("sourceSizeBytes", sourceInfo.Length),
+				("zipSizeBytes", zipInfo.Length),
+				("attempt", attempt));
+
 			return true;
+		}
+		catch (IOException ex)
+		{
+			WriteLog(LogLevel.Warning, "Upload", "Zip failed due to file access error",
+				("sourcePath", sourcePath),
+				("attempt", attempt),
+				("error", ex.Message));
+			return false;
 		}
 		catch (Exception ex)
 		{
-			Core.Logger.LogError("Zip failed: {Message}", ex.ToString());
+			WriteLog(LogLevel.Error, "Upload", "Zip failed",
+				("sourcePath", sourcePath),
+				("attempt", attempt),
+				("error", ex.ToString()));
 			return false;
 		}
 	}
