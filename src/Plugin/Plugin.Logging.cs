@@ -111,7 +111,7 @@ public sealed partial class Plugin
 		if (!Config.CurrentValue.General.LogVerboseEvents)
 			return;
 
-		var gameRules = Core.EntitySystem.GetGameRules();
+		var gameRules = TryGetGameRules();
 
 		WriteLog(LogLevel.Debug, "State", $"Game state ({context})",
 			("map", GetSafeMapName()),

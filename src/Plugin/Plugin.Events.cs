@@ -40,84 +40,125 @@ public sealed partial class Plugin
 
 	private void OnMapLoad(IOnMapLoadEvent @event)
 	{
-		WriteLog(LogLevel.Information, "Events", "OnMapLoad",
-			("map", GetSafeMapName()),
-			("demoDirectory", DemoDirectory));
-
-		Core.Scheduler.DelayBySeconds(0.1f, () =>
+		try
 		{
-			Directory.CreateDirectory(DemoDirectory);
-			WriteLog(LogLevel.Debug, "Events", "Demo directory ensured", ("demoDirectory", DemoDirectory));
-		});
+			WriteLog(LogLevel.Information, "Events", "OnMapLoad",
+				("map", GetSafeMapName()),
+				("mapForFile", GetSafeMapNameForFile()),
+				("demoDirectory", DemoDirectory));
+
+			Core.Scheduler.DelayBySeconds(0.1f, () =>
+			{
+				try
+				{
+					Directory.CreateDirectory(DemoDirectory);
+					WriteLog(LogLevel.Debug, "Events", "Demo directory ensured", ("demoDirectory", DemoDirectory));
+				}
+				catch (Exception ex)
+				{
+					WriteLog(LogLevel.Error, "Events", "Failed to create demo directory",
+						("demoDirectory", DemoDirectory),
+						("error", ex.Message));
+				}
+			});
+		}
+		catch (Exception ex)
+		{
+			WriteLog(LogLevel.Error, "Events", "OnMapLoad failed", ("error", ex.ToString()));
+		}
 	}
 
 	private void OnMapUnload(IOnMapUnloadEvent @event)
 	{
-		WriteLog(LogLevel.Information, "Events", "OnMapUnload",
-			("map", _currentMapName),
-			("isRecording", _isRecording),
-			("fileName", _fileName ?? "null"));
+		try
+		{
+			WriteLog(LogLevel.Information, "Events", "OnMapUnload",
+				("map", _currentMapName),
+				("isRecording", _isRecording),
+				("fileName", _fileName ?? "null"));
 
-		StopRecording(isMapUnload: true, reason: "map_unload");
+			StopRecording(isMapUnload: true, reason: "map_unload");
+		}
+		catch (Exception ex)
+		{
+			WriteLog(LogLevel.Error, "Events", "OnMapUnload failed", ("error", ex.ToString()));
+		}
 	}
 
 	private HookResult OnMatchEnd(EventCsWinPanelMatch @event)
 	{
-		WriteLog(LogLevel.Information, "Events", "OnMatchEnd",
-			("isRecording", _isRecording),
-			("fileName", _fileName ?? "null"),
-			("round", GetSafeRound()),
-			("playerCount", GetSafePlayerCount()));
+		try
+		{
+			WriteLog(LogLevel.Information, "Events", "OnMatchEnd",
+				("isRecording", _isRecording),
+				("fileName", _fileName ?? "null"),
+				("round", GetSafeRound()),
+				("playerCount", GetSafePlayerCount()));
 
-		StopRecording(reason: "match_end");
+			StopRecording(reason: "match_end");
+		}
+		catch (Exception ex)
+		{
+			WriteLog(LogLevel.Error, "Events", "OnMatchEnd failed",
+				("error", ex.ToString()));
+		}
+
 		return HookResult.Continue;
 	}
 
 	private HookResult OnRoundStart(EventRoundStart @event)
 	{
-		LogGameState("OnRoundStart");
-
-		if (!Config.CurrentValue.AutoRecord.Enabled)
+		try
 		{
-			WriteLog(LogLevel.Debug, "Events", "OnRoundStart ignored, auto-record disabled");
-			return HookResult.Continue;
-		}
+			LogGameState("OnRoundStart");
 
-		WriteLog(LogLevel.Information, "Events", "OnRoundStart",
-			("round", GetSafeRound()),
-			("playerCount", GetRealPlayerCount()),
-			("isRecording", _isRecording),
-			("cropRounds", Config.CurrentValue.AutoRecord.CropRounds),
-			("canAutoStartRecording", CanAutoStartRecording()));
+			if (!Config.CurrentValue.AutoRecord.Enabled)
+			{
+				WriteLog(LogLevel.Debug, "Events", "OnRoundStart ignored, auto-record disabled");
+				return HookResult.Continue;
+			}
 
-		if (Config.CurrentValue.AutoRecord.CropRounds && _isRecording)
-		{
-			WriteLog(LogLevel.Information, "Events", "OnRoundStart stopping recording for crop rounds",
-				("fileName", _fileName ?? "null"),
-				("round", GetSafeRound()));
-			StopRecording(reason: "crop_round");
-		}
-
-		if (Config.CurrentValue.AutoRecord.CropRounds)
-		{
-			WriteLog(LogLevel.Debug, "Events", "OnRoundStart cleared demo requesters",
-				("previousRequesterCount", _requesters.Count));
-			_requesters.Clear();
-		}
-
-		if (!_isRecording && GetRealPlayerCount() > 0 && CanAutoStartRecording())
-		{
-			WriteLog(LogLevel.Information, "Events", "OnRoundStart scheduling StartRecording",
+			WriteLog(LogLevel.Information, "Events", "OnRoundStart",
+				("round", GetSafeRound()),
 				("playerCount", GetRealPlayerCount()),
-				("round", GetSafeRound()));
-			Core.Scheduler.NextWorldUpdate(() => StartRecording("autodemo"));
+				("isRecording", _isRecording),
+				("cropRounds", Config.CurrentValue.AutoRecord.CropRounds),
+				("canAutoStartRecording", CanAutoStartRecording()));
+
+			if (Config.CurrentValue.AutoRecord.CropRounds && _isRecording)
+			{
+				WriteLog(LogLevel.Information, "Events", "OnRoundStart stopping recording for crop rounds",
+					("fileName", _fileName ?? "null"),
+					("round", GetSafeRound()));
+				StopRecording(reason: "crop_round");
+			}
+
+			if (Config.CurrentValue.AutoRecord.CropRounds)
+			{
+				WriteLog(LogLevel.Debug, "Events", "OnRoundStart cleared demo requesters",
+					("previousRequesterCount", _requesters.Count));
+				_requesters.Clear();
+			}
+
+			if (!_isRecording && GetRealPlayerCount() > 0 && CanAutoStartRecording())
+			{
+				WriteLog(LogLevel.Information, "Events", "OnRoundStart scheduling StartRecording",
+					("playerCount", GetRealPlayerCount()),
+					("round", GetSafeRound()));
+				Core.Scheduler.NextWorldUpdate(() => StartRecording("autodemo"));
+			}
+			else if (!_isRecording)
+			{
+				WriteLog(LogLevel.Information, "Events", "OnRoundStart skipped StartRecording",
+					("playerCount", GetRealPlayerCount()),
+					("canAutoStartRecording", CanAutoStartRecording()),
+					("isRecording", _isRecording));
+			}
 		}
-		else if (!_isRecording)
+		catch (Exception ex)
 		{
-			WriteLog(LogLevel.Information, "Events", "OnRoundStart skipped StartRecording",
-				("playerCount", GetRealPlayerCount()),
-				("canAutoStartRecording", CanAutoStartRecording()),
-				("isRecording", _isRecording));
+			WriteLog(LogLevel.Error, "Events", "OnRoundStart failed",
+				("error", ex.ToString()));
 		}
 
 		return HookResult.Continue;
@@ -125,27 +166,36 @@ public sealed partial class Plugin
 
 	private HookResult OnPlayerActivate(EventPlayerActivate @event)
 	{
-		var player = Core.PlayerManager.GetPlayer(@event.UserId);
-		if (player?.IsValid != true || player.IsFakeClient || player.Controller?.IsHLTV == true)
-			return HookResult.Continue;
-
-		_lastPlayerCheckTime = Core.Engine.GlobalVars.CurrentTime;
-
-		WriteLog(LogLevel.Debug, "Events", "OnPlayerActivate",
-			("userId", @event.UserId),
-			("playerName", player.Controller?.PlayerName ?? "Unknown"),
-			("steamId", player.Controller?.SteamID ?? 0),
-			("playerCount", GetRealPlayerCount()),
-			("isRecording", _isRecording),
-			("autoRecordEnabled", Config.CurrentValue.AutoRecord.Enabled),
-			("canAutoStartRecording", CanAutoStartRecording()));
-
-		if (!_isRecording && Config.CurrentValue.AutoRecord.Enabled && CanAutoStartRecording())
+		try
 		{
-			WriteLog(LogLevel.Information, "Events", "OnPlayerActivate triggering StartRecording",
+			var player = Core.PlayerManager.GetPlayer(@event.UserId);
+			if (player?.IsValid != true || player.IsFakeClient || player.Controller?.IsHLTV == true)
+				return HookResult.Continue;
+
+			_lastPlayerCheckTime = GetSafeCurrentTime();
+
+			WriteLog(LogLevel.Debug, "Events", "OnPlayerActivate",
+				("userId", @event.UserId),
 				("playerName", player.Controller?.PlayerName ?? "Unknown"),
-				("playerCount", GetRealPlayerCount()));
-			StartRecording("autodemo");
+				("steamId", player.Controller?.SteamID ?? 0),
+				("playerCount", GetRealPlayerCount()),
+				("isRecording", _isRecording),
+				("autoRecordEnabled", Config.CurrentValue.AutoRecord.Enabled),
+				("canAutoStartRecording", CanAutoStartRecording()));
+
+			if (!_isRecording && Config.CurrentValue.AutoRecord.Enabled && CanAutoStartRecording())
+			{
+				WriteLog(LogLevel.Information, "Events", "OnPlayerActivate triggering StartRecording",
+					("playerName", player.Controller?.PlayerName ?? "Unknown"),
+					("playerCount", GetRealPlayerCount()));
+				StartRecording("autodemo");
+			}
+		}
+		catch (Exception ex)
+		{
+			WriteLog(LogLevel.Error, "Events", "OnPlayerActivate failed",
+				("userId", @event.UserId),
+				("error", ex.ToString()));
 		}
 
 		return HookResult.Continue;

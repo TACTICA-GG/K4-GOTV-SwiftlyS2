@@ -23,13 +23,13 @@ public sealed partial class Plugin
 		if (Config.CurrentValue.AutoRecord.RecordWarmup)
 			return true;
 
-		var gameRules = Core.EntitySystem.GetGameRules();
+		var gameRules = TryGetGameRules();
 		return gameRules?.WarmupPeriod != true;
 	}
 
 	private void StartRecording(string baseName)
 	{
-		var gameRules = Core.EntitySystem.GetGameRules();
+		var gameRules = TryGetGameRules();
 
 		WriteLog(LogLevel.Information, "Recording", "StartRecording called",
 			("baseName", baseName),
@@ -63,7 +63,7 @@ public sealed partial class Plugin
 			? Config.CurrentValue.General.CropRoundsFileNamingPattern
 			: Config.CurrentValue.General.RegularFileNamingPattern;
 
-		_fileName = BuildFileName(pattern, baseName);
+		_fileName = SanitizeFileName(BuildFileName(pattern, baseName));
 		var fullPath = Path.Combine(DemoDirectory, $"{_fileName}.dem");
 
 		var counter = 1;
@@ -82,11 +82,23 @@ public sealed partial class Plugin
 			("command", $"tv_record \"{fullPath}\""),
 			("fileName", _fileName),
 			("fullPath", fullPath),
+			("rawMap", GetSafeMapName()),
+			("mapForFile", GetSafeMapNameForFile()),
 			("pattern", pattern),
 			("cropRounds", Config.CurrentValue.AutoRecord.CropRounds),
 			("serverName", _currentServerName));
 
-		Core.Engine.ExecuteCommand($"tv_record \"{fullPath}\"");
+		try
+		{
+			Core.Engine.ExecuteCommand($"tv_record \"{fullPath}\"");
+		}
+		catch (Exception ex)
+		{
+			WriteLog(LogLevel.Error, "Recording", "Failed to execute tv_record",
+				("fullPath", fullPath),
+				("error", ex.Message));
+			return;
+		}
 
 		_isRecording = true;
 		_demoStartTime = GetSafeCurrentTime();
@@ -401,35 +413,42 @@ public sealed partial class Plugin
 
 	private void CheckIdleState()
 	{
-		if (!_isRecording)
-			return;
-
-		UpdateLastKnownPlayerCount();
-
-		var playerCount = GetSafePlayerCount();
-
-		if (playerCount < Config.CurrentValue.AutoRecord.IdlePlayerCountThreshold)
+		try
 		{
-			var idleTime = GetSafeCurrentTime() - _lastPlayerCheckTime;
+			if (!_isRecording)
+				return;
 
-			WriteLog(LogLevel.Debug, "Recording", "Idle check below threshold",
-				("playerCount", playerCount),
-				("threshold", Config.CurrentValue.AutoRecord.IdlePlayerCountThreshold),
-				("idleTimeSeconds", idleTime),
-				("idleLimitSeconds", Config.CurrentValue.AutoRecord.IdleTimeSeconds));
+			UpdateLastKnownPlayerCount();
 
-			if (idleTime > Config.CurrentValue.AutoRecord.IdleTimeSeconds)
+			var playerCount = GetSafePlayerCount();
+
+			if (playerCount < Config.CurrentValue.AutoRecord.IdlePlayerCountThreshold)
 			{
-				WriteLog(LogLevel.Information, "Recording", "Stopping recording due to idle",
+				var idleTime = GetSafeCurrentTime() - _lastPlayerCheckTime;
+
+				WriteLog(LogLevel.Debug, "Recording", "Idle check below threshold",
 					("playerCount", playerCount),
+					("threshold", Config.CurrentValue.AutoRecord.IdlePlayerCountThreshold),
 					("idleTimeSeconds", idleTime),
-					("fileName", _fileName ?? "null"));
-				StopRecording(reason: "idle");
+					("idleLimitSeconds", Config.CurrentValue.AutoRecord.IdleTimeSeconds));
+
+				if (idleTime > Config.CurrentValue.AutoRecord.IdleTimeSeconds)
+				{
+					WriteLog(LogLevel.Information, "Recording", "Stopping recording due to idle",
+						("playerCount", playerCount),
+						("idleTimeSeconds", idleTime),
+						("fileName", _fileName ?? "null"));
+					StopRecording(reason: "idle");
+				}
+			}
+			else
+			{
+				_lastPlayerCheckTime = GetSafeCurrentTime();
 			}
 		}
-		else
+		catch (Exception ex)
 		{
-			_lastPlayerCheckTime = GetSafeCurrentTime();
+			WriteLog(LogLevel.Error, "Recording", "CheckIdleState failed", ("error", ex.Message));
 		}
 	}
 
@@ -450,7 +469,7 @@ public sealed partial class Plugin
 	{
 		return pattern
 			.Replace("{fileName}", baseName)
-			.Replace("{map}", GetSafeMapName())
+			.Replace("{map}", GetSafeMapNameForFile())
 			.Replace("{date}", DateTime.Now.ToString("yyyy-MM-dd"))
 			.Replace("{time}", DateTime.Now.ToString("HH-mm-ss"))
 			.Replace("{timestamp}", DateTime.Now.ToString("yyyyMMdd_HHmmss"))
@@ -475,7 +494,12 @@ public sealed partial class Plugin
 		try
 		{
 			var mapName = Core.Engine.GlobalVars.MapName.ToString();
-			return string.IsNullOrWhiteSpace(mapName) ? "unknown" : mapName;
+			mapName = mapName.Trim().TrimStart('/');
+
+			if (string.IsNullOrWhiteSpace(mapName))
+				return "unknown";
+
+			return mapName;
 		}
 		catch
 		{
@@ -500,7 +524,7 @@ public sealed partial class Plugin
 	{
 		try
 		{
-			var gameRules = Core.EntitySystem.GetGameRules();
+			var gameRules = TryGetGameRules();
 			return (gameRules?.TotalRoundsPlayed ?? 0) + 1;
 		}
 		catch
